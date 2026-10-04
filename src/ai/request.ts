@@ -14,7 +14,8 @@ export interface CallOptions {
 
 export type CallResult<T> =
   | { ok: true; value: T; usage?: Usage }
-  | { ok: false; error: AiError; gotFirstToken: boolean };
+  // a failed call still carries the usage OpenRouter reported for it (empty answer, error mid-stream), because it is billed
+  | { ok: false; error: AiError; gotFirstToken: boolean; usage?: Usage };
 
 /** What the combined signal's `reason` is when the request timer, not the caller, aborted. */
 const TIMEOUT_REASON = Symbol('request timeout');
@@ -112,7 +113,7 @@ async function send(
   const timeoutSec = opts.settings.requestTimeoutSec;
   const fetchFn = opts.fetchFn ?? fetch; // a local, so the browser's fetch is not called as a method
   const attempt: Attempt = { gotFirstToken: false };
-  const fail = (error: AiError): CallResult<string> => ({ ok: false, error, gotFirstToken: attempt.gotFirstToken });
+  const fail = (error: AiError): CallResult<string> => failure(error, attempt);
 
   const timeout = new AbortController();
   const signals = [timeout.signal];
@@ -151,10 +152,14 @@ async function send(
   }
 }
 
+function failure(error: AiError, attempt: Attempt, usage?: Usage): CallResult<string> {
+  const result: CallResult<string> = { ok: false, error, gotFirstToken: attempt.gotFirstToken };
+  if (usage) result.usage = usage;
+  return result;
+}
+
 function finish(text: string, usage: Usage | undefined, model: string, attempt: Attempt): CallResult<string> {
-  if (text === '') {
-    return { ok: false, error: aiError('model_unavailable', { model }), gotFirstToken: attempt.gotFirstToken };
-  }
+  if (text === '') return failure(aiError('model_unavailable', { model }), attempt, usage);
   return usage ? { ok: true, value: text, usage } : { ok: true, value: text };
 }
 
@@ -180,7 +185,7 @@ export async function callStream(
       const chunk = parseJson(data);
       if (!isRecord(chunk)) continue;
       const error = parseErrorObject(chunk, model);
-      if (error) return { ok: false, error, gotFirstToken: attempt.gotFirstToken };
+      if (error) return failure(error, attempt, usage);
       const delta = contentOf(chunk, 'delta');
       if (delta !== '') {
         attempt.gotFirstToken = true;

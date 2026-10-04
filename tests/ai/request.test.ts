@@ -193,6 +193,7 @@ describe('callStream', () => {
     const { fetchFn } = recordingFetch(() => json({ error: { code: 401, message: 'No auth' } }, 401));
     const result = await callStream(req, options(fetchFn), () => {});
     expect(result).toMatchObject({ ok: false, error: { code: 'bad_key', status: 401, model: 'vendor/model' }, gotFirstToken: false });
+    expect(result).not.toHaveProperty('usage');
 
     const paid = recordingFetch(() => new Response('pay up', { status: 402 }));
     expect(await callStream(req, options(paid.fetchFn), () => {})).toMatchObject({
@@ -209,6 +210,40 @@ describe('callStream', () => {
       ok: false,
       error: { code: 'model_unavailable', message: 'Модель vendor/model сейчас недоступна', model: 'vendor/model' },
       gotFirstToken: false,
+    });
+  });
+
+  it('keeps the usage of an empty completion on the failure', async () => {
+    const { fetchFn } = recordingFetch(() =>
+      sseResponse([
+        delta(''),
+        'data: {"choices":[],"usage":{"prompt_tokens":30,"completion_tokens":900,"cost":0.004}}\n\n',
+        'data: [DONE]\n\n',
+      ]),
+    );
+    const result = await callStream(req, options(fetchFn), () => {});
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'model_unavailable', message: 'Модель vendor/model сейчас недоступна', model: 'vendor/model' },
+      gotFirstToken: false,
+      usage: { promptTokens: 30, completionTokens: 900, costUsd: 0.004 },
+    });
+  });
+
+  it('keeps the usage seen before a mid-stream error chunk on the failure', async () => {
+    const { fetchFn } = recordingFetch(() =>
+      sseResponse([
+        delta('Ра'),
+        'data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":2,"cost":0.0003}}\n\n',
+        'data: {"error":{"code":502,"message":"upstream"}}\n\n',
+      ]),
+    );
+    const result = await callStream(req, options(fetchFn), () => {});
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'model_unavailable', status: 502 },
+      gotFirstToken: true,
+      usage: { promptTokens: 7, completionTokens: 2, costUsd: 0.0003 },
     });
   });
 
@@ -401,6 +436,21 @@ describe('callComplete', () => {
         gotFirstToken: false,
       });
     }
+  });
+
+  it('keeps the usage of an empty completion on the failure', async () => {
+    const { fetchFn } = recordingFetch(() =>
+      json({
+        choices: [{ message: { role: 'assistant', content: '' } }],
+        usage: { prompt_tokens: 40, completion_tokens: 1200, cost: 0.01 },
+      }),
+    );
+    expect(await callComplete(req, options(fetchFn))).toEqual({
+      ok: false,
+      error: { code: 'model_unavailable', message: 'Модель vendor/model сейчас недоступна', model: 'vendor/model' },
+      gotFirstToken: false,
+      usage: { promptTokens: 40, completionTokens: 1200, costUsd: 0.01 },
+    });
   });
 
   it('maps a network failure, a timeout and a cancel', async () => {
