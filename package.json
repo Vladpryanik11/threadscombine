@@ -1,0 +1,31 @@
+{
+  "name": "threadscombine",
+  "version": "0.1.0",
+  "description": "Личный ИИ-помощник для Threads",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "wxt",
+    "build": "wxt build",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "wxt prepare"
+  },
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@preact/signals": "^2.11.3",
+    "dexie": "^4.4.6",
+    "preact": "^11.0.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@preact/preset-vite": "^2.10.6",
+    "@testing-library/preact": "^3.2.4",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.14.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3",
+    "wxt": "^0.21.4"
+  }
+}
