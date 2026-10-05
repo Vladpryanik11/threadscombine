@@ -432,3 +432,52 @@ button:disabled {
 .tc-toast[data-kind="error"] {
   border-left-color: var(--tc-color-danger);
 }
+
+/* settings: data and journal */
+
+.tc-data__file {
+  overflow-wrap: anywhere;
+}
+
+.tc-journal {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--tc-color-border);
+  border-radius: var(--tc-radius);
+  font-size: 12px;
+  list-style: none;
+}
+
+.tc-journal__entry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--tc-color-border);
+}
+
+.tc-journal__entry:last-child {
+  border-bottom: 0;
+}
+
+.tc-journal__time,
+.tc-journal__area {
+  color: var(--tc-color-text-muted);
+}
+
+.tc-journal__entry[data-level="error"] .tc-journal__level {
+  color: var(--tc-color-danger);
+}
+
+.tc-journal__entry[data-level="warn"] .tc-journal__level {
+  font-weight: 600;
+}
+
+.tc-journal__message {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}

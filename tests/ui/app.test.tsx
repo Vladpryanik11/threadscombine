@@ -111,7 +111,7 @@ describe('tabs', () => {
     expect(screen.queryByText(/^Скоро: /)).toBeNull();
   });
 
-  it('«Настройки» lists the key, models, theme, accounts and spend sections', () => {
+  it('«Настройки» lists the key, models, theme, accounts, spend, data and journal sections', () => {
     render(<App />);
     fireEvent.click(tab('Настройки'));
     expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual([
@@ -120,6 +120,8 @@ describe('tabs', () => {
       'Оформление',
       'Аккаунты',
       'Расходы',
+      'Данные',
+      'Журнал',
     ]);
   });
 
