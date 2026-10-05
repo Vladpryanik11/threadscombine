@@ -94,8 +94,33 @@ describe('the summary', () => {
     render(<SpendSection />);
 
     expect(await screen.findByText('Сегодня: $0.12 · За месяц: $1.50')).toBeTruthy();
-    expect(entries('По задачам')).toEqual(['Проверка ключа$0.01']);
-    expect(entries('По аккаунтам')).toEqual(['Удалённый аккаунт$1.50']);
+    expect(entries('За месяц по задачам')).toEqual(['Проверка ключа$0.01']);
+    expect(entries('За месяц по аккаунтам')).toEqual(['Удалённый аккаунт$1.50']);
+  });
+
+  it('shows amounts below a cent with six decimals, so that a key check is seen to cost something', async () => {
+    await setUp(
+      {},
+      summary({
+        todayUsd: 0.000003,
+        monthUsd: 0.00003,
+        byPurpose: [{ purpose: 'key-check', usd: 0.00003 }],
+        byAccount: [{ accountId: MAIN.id, usd: 0.0099 }],
+      }),
+    );
+    render(<SpendSection />);
+
+    expect(await screen.findByText('Сегодня: $0.000003 · За месяц: $0.000030')).toBeTruthy();
+    expect(entries('За месяц по задачам')).toEqual(['Проверка ключа$0.000030']);
+    expect(entries('За месяц по аккаунтам')).toEqual(['Основной$0.009900']);
+  });
+
+  it('keeps two decimals from one cent up, and for nothing at all', async () => {
+    await setUp({}, summary({ todayUsd: 0.01, monthUsd: 0, byPurpose: [{ purpose: 'virality', usd: 12.345 }] }));
+    render(<SpendSection />);
+
+    expect(await screen.findByText('Сегодня: $0.01 · За месяц: $0.00')).toBeTruthy();
+    expect(entries('За месяц по задачам')).toEqual(['virality$12.35']);
   });
 
   it('names the accounts that still exist and keeps the order of the summary', async () => {
@@ -117,18 +142,18 @@ describe('the summary', () => {
     render(<SpendSection />);
 
     await screen.findByText(/^Сегодня: /);
-    expect(entries('По задачам')).toEqual(['virality$2.00', 'Проверка ключа$1.01']);
-    expect(entries('По аккаунтам')).toEqual(['Удалённый аккаунт$2.00', 'Основной$1.01']);
+    expect(entries('За месяц по задачам')).toEqual(['virality$2.00', 'Проверка ключа$1.01']);
+    expect(entries('За месяц по аккаунтам')).toEqual(['Удалённый аккаунт$2.00', 'Основной$1.01']);
   });
 
   it('turns an account into «Удалённый аккаунт» as soon as it is gone from the list', async () => {
     await setUp({}, summary({ monthUsd: 1, byAccount: [{ accountId: MAIN.id, usd: 1 }] }));
     render(<SpendSection />);
-    await waitFor(() => expect(entries('По аккаунтам')).toEqual(['Основной$1.00']));
+    await waitFor(() => expect(entries('За месяц по аккаунтам')).toEqual(['Основной$1.00']));
 
     accounts.value = [];
 
-    await waitFor(() => expect(entries('По аккаунтам')).toEqual(['Удалённый аккаунт$1.00']));
+    await waitFor(() => expect(entries('За месяц по аккаунтам')).toEqual(['Удалённый аккаунт$1.00']));
   });
 
   it('leaves out a list that has nothing in it', async () => {
@@ -137,8 +162,8 @@ describe('the summary', () => {
 
     await screen.findByText('Сегодня: $0.00 · За месяц: $0.00');
     expect(screen.queryByRole('list')).toBeNull();
-    expect(screen.queryByText('По задачам')).toBeNull();
-    expect(screen.queryByText('По аккаунтам')).toBeNull();
+    expect(screen.queryByText('За месяц по задачам')).toBeNull();
+    expect(screen.queryByText('За месяц по аккаунтам')).toBeNull();
   });
 
   it('is read when the section opens, and again on «Обновить»', async () => {
@@ -226,8 +251,8 @@ describe('following the spend', () => {
 
     await paid(0.25);
     await screen.findByText('Сегодня: $0.25 · За месяц: $0.25');
-    expect(entries('По задачам')).toEqual(['Проверка ключа$0.25']);
-    expect(entries('По аккаунтам')).toEqual(['Основной$0.25']);
+    expect(entries('За месяц по задачам')).toEqual(['Проверка ключа$0.25']);
+    expect(entries('За месяц по аккаунтам')).toEqual(['Основной$0.25']);
 
     await paid(0.5);
     await screen.findByText('Сегодня: $0.75 · За месяц: $0.75');

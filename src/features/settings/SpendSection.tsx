@@ -11,7 +11,8 @@ import { saveSettings } from './save-settings';
 const READ_FAILED = 'Не удалось прочитать расходы';
 const DELETED_ACCOUNT = 'Удалённый аккаунт';
 
-const money = (usd: number): string => `$${usd.toFixed(2)}`;
+/** Cents, except for what costs less than a cent (a key check): that shows its real size instead of a flat `$0.00`. */
+const money = (usd: number): string => (usd > 0 && usd < 0.01 ? `$${usd.toFixed(6)}` : `$${usd.toFixed(2)}`);
 
 // ------------------------------------------------------------------- summary
 
@@ -182,11 +183,11 @@ export function SpendSection() {
         {summary && (
           <>
             <SpendList
-              title="По задачам"
+              title="За месяц по задачам"
               rows={summary.byPurpose.map(({ purpose, usd }) => ({ key: purpose, label: purposeLabel(purpose), usd }))}
             />
             <SpendList
-              title="По аккаунтам"
+              title="За месяц по аккаунтам"
               rows={summary.byAccount.map(({ accountId, usd }) => ({
                 key: accountId,
                 label: names.get(accountId) ?? DELETED_ACCOUNT,
