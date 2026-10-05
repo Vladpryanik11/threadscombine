@@ -1,0 +1,323 @@
+/*
+ * Colour tokens live on :root (light). The dark values are given twice, because CSS cannot share a
+ * block between a plain selector and a media query: [data-theme="dark"] and, under
+ * prefers-color-scheme: dark, [data-theme="auto"]. tests/ui/theme.test.ts keeps the three in step.
+ */
+:root {
+  color-scheme: light;
+  --tc-color-bg: #ffffff;
+  --tc-color-surface: #f3f4f6;
+  --tc-color-surface-hover: #e7e9ee;
+  --tc-color-border: #d6dae1;
+  --tc-color-text: #16181d;
+  --tc-color-text-muted: #5b6270;
+  --tc-color-accent: #2563eb;
+  --tc-color-accent-text: #ffffff;
+  --tc-color-danger: #c62828;
+  --tc-color-success: #1b7f3b;
+  --tc-color-toast-bg: #16181d;
+  --tc-color-toast-text: #ffffff;
+
+  --tc-radius: 8px;
+  --tc-gap: 8px;
+  --tc-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --tc-color-bg: #14161a;
+  --tc-color-surface: #1f2228;
+  --tc-color-surface-hover: #2a2e36;
+  --tc-color-border: #353a44;
+  --tc-color-text: #e8eaee;
+  --tc-color-text-muted: #9aa1ae;
+  --tc-color-accent: #5b8def;
+  --tc-color-accent-text: #0d1117;
+  --tc-color-danger: #ef6b6b;
+  --tc-color-success: #4cc27a;
+  --tc-color-toast-bg: #e8eaee;
+  --tc-color-toast-text: #14161a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    color-scheme: dark;
+    --tc-color-bg: #14161a;
+    --tc-color-surface: #1f2228;
+    --tc-color-surface-hover: #2a2e36;
+    --tc-color-border: #353a44;
+    --tc-color-text: #e8eaee;
+    --tc-color-text-muted: #9aa1ae;
+    --tc-color-accent: #5b8def;
+    --tc-color-accent-text: #0d1117;
+    --tc-color-danger: #ef6b6b;
+    --tc-color-success: #4cc27a;
+    --tc-color-toast-bg: #e8eaee;
+    --tc-color-toast-text: #14161a;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--tc-color-bg);
+  color: var(--tc-color-text);
+  font: 14px/1.4 var(--tc-font);
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* shell */
+
+.tc-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.tc-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tc-gap);
+  padding: var(--tc-gap) 12px;
+  border-bottom: 1px solid var(--tc-color-border);
+}
+
+.tc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 10px;
+  border: 1px solid var(--tc-color-border);
+  border-radius: 999px;
+  background: var(--tc-color-surface);
+  color: var(--tc-color-text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tc-chip--button:hover {
+  background: var(--tc-color-surface-hover);
+  color: var(--tc-color-text);
+}
+
+.tc-chip__action {
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+.tc-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--tc-color-border);
+}
+
+.tc-tab {
+  padding: 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--tc-color-text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.tc-tab[aria-selected="true"] {
+  border-bottom-color: var(--tc-color-accent);
+  color: var(--tc-color-text);
+}
+
+.tc-content {
+  flex: 1;
+  padding: 12px;
+}
+
+.tc-placeholder {
+  margin: 0;
+  color: var(--tc-color-text-muted);
+}
+
+/* account switcher */
+
+.tc-account {
+  position: relative;
+}
+
+.tc-account__trigger,
+.tc-account__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--tc-color-border);
+  border-radius: var(--tc-radius);
+  background: var(--tc-color-surface);
+  text-align: left;
+}
+
+.tc-account__trigger::after {
+  content: '▾';
+  margin-left: 2px;
+  color: var(--tc-color-text-muted);
+}
+
+.tc-account__menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--tc-color-border);
+  border-radius: var(--tc-radius);
+  background: var(--tc-color-bg);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.2);
+}
+
+.tc-account__item {
+  border-color: transparent;
+  background: none;
+}
+
+.tc-account__item:hover:not(:disabled) {
+  background: var(--tc-color-surface-hover);
+}
+
+.tc-account__item[aria-current="true"] {
+  background: var(--tc-color-surface);
+  font-weight: 600;
+}
+
+.tc-account__new {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+}
+
+.tc-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+/* building blocks */
+
+.tc-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--tc-color-border);
+  border-radius: var(--tc-radius);
+  background: var(--tc-color-surface);
+}
+
+.tc-btn:hover:not(:disabled) {
+  background: var(--tc-color-surface-hover);
+}
+
+.tc-btn--primary {
+  border-color: var(--tc-color-accent);
+  background: var(--tc-color-accent);
+  color: var(--tc-color-accent-text);
+}
+
+.tc-btn--primary:hover:not(:disabled) {
+  background: var(--tc-color-accent);
+  filter: brightness(1.1);
+}
+
+.tc-btn--danger {
+  border-color: var(--tc-color-danger);
+  color: var(--tc-color-danger);
+}
+
+.tc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tc-field__label {
+  color: var(--tc-color-text-muted);
+  font-size: 12px;
+}
+
+.tc-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--tc-color-border);
+  border-radius: var(--tc-radius);
+  background: var(--tc-color-bg);
+}
+
+.tc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tc-section {
+  margin-bottom: 16px;
+}
+
+.tc-section__title {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+/* toasts */
+
+.tc-toasts {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.tc-toast {
+  padding: 8px 12px;
+  border-left: 4px solid var(--tc-color-accent);
+  border-radius: var(--tc-radius);
+  background: var(--tc-color-toast-bg);
+  color: var(--tc-color-toast-text);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+}
+
+.tc-toast[data-kind="success"] {
+  border-left-color: var(--tc-color-success);
+}
+
+.tc-toast[data-kind="error"] {
+  border-left-color: var(--tc-color-danger);
+}
