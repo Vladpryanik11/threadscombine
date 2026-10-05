@@ -20,9 +20,10 @@ import { listJournal, log } from '../../src/storage/journal';
 import { DEFAULT_SETTINGS, getSettings, updateSettings } from '../../src/storage/settings';
 
 // A later part's table: the backup walks `db.tables`, so it must travel without any change in backup.ts.
+// The version number is the test's own, far from any version a real part will declare.
 beforeAll(() => {
   db.close();
-  db.version(2).stores({ notes: '++id, accountId' });
+  db.version(1000).stores({ notes: '++id, accountId' });
 });
 
 beforeEach(async () => {

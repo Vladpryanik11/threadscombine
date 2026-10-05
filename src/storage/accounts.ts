@@ -119,10 +119,15 @@ export async function updateAccount(
   });
 }
 
-/** Tables with an `accountId` index — everything that belongs to one account — except `spend`. */
+/**
+ * Tables that belong to one account — those with an `accountId` index, or with `accountId` as their primary key
+ * (one row per account) — except `spend`. A compound `[accountId+…]` index alone does not count.
+ */
 export function accountScopedTables(database: Dexie): Table[] {
   return database.tables.filter(
-    (table) => table.name !== 'spend' && table.schema.indexes.some((index) => index.name === 'accountId'),
+    (table) =>
+      table.name !== 'spend' &&
+      (table.schema.primKey.name === 'accountId' || table.schema.indexes.some((index) => index.name === 'accountId')),
   );
 }
 

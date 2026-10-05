@@ -16,11 +16,14 @@ import {
 } from '../../src/storage/accounts';
 import { getSettings, updateSettings } from '../../src/storage/settings';
 
-// The core has no account-scoped table besides `spend`, so a later part's table is simulated here:
-// `notes` has an `accountId` index and must be wiped together with its account.
+// The core has no account-scoped table besides `spend`, so later parts' tables are simulated here: `notes` has an
+// `accountId` index and `style` has `accountId` as its primary key; both must be wiped together with their account.
+// The version number is the test's own, far from any version a real part will declare.
+const TEST_VERSION = 1000;
+
 beforeAll(() => {
   db.close();
-  db.version(2).stores({ notes: '++id, accountId' });
+  db.version(TEST_VERSION).stores({ notes: '++id, accountId', style: 'accountId' });
 });
 
 beforeEach(async () => {
@@ -296,14 +299,27 @@ describe('accountScopedTables', () => {
     expect(accountScopedTables(test).map((t) => t.name)).toEqual(['notes']);
   });
 
+  it('finds tables whose primary key is accountId', () => {
+    const test = new Dexie('scoped-test-primary');
+    test.version(1).stores({ style: 'accountId', spend: 'accountId', other: 'id' });
+    expect(accountScopedTables(test).map((t) => t.name)).toEqual(['style']);
+  });
+
   it('ignores tables where accountId is not an index of its own', () => {
     const test = new Dexie('scoped-test-2');
-    test.version(1).stores({ plain: '++id, createdAt', compound: '++id, [accountId+ts]' });
+    test.version(1).stores({
+      plain: '++id, createdAt',
+      compound: '++id, [accountId+ts]',
+      compoundKey: '[accountId+ts]',
+    });
     expect(accountScopedTables(test)).toEqual([]);
   });
 
   it('sees the tables of the real database', () => {
-    expect(accountScopedTables(db).map((t) => t.name)).toEqual(['notes']);
+    const names = accountScopedTables(db).map((t) => t.name);
+    expect(names).toContain('notes');
+    expect(names).toContain('style');
+    expect(names).not.toContain('spend');
   });
 });
 
@@ -367,6 +383,18 @@ describe('deleteAccount', () => {
     expect((await notes.toArray()).map((row) => row.text)).toEqual(['main']);
     expect(await db.accounts.get(b.id)).toBeUndefined();
     expect(await db.accounts.get(main.id)).toBeDefined();
+  });
+
+  it('deletes the row of a table whose primary key is the accountId', async () => {
+    const main = await ensureDefaultAccount();
+    const b = await createAccount({ name: 'B' });
+    const style = db.table('style');
+    await style.bulkAdd([
+      { accountId: b.id, voice: 'b' },
+      { accountId: main.id, voice: 'main' },
+    ]);
+    await deleteAccount(b.id);
+    expect((await style.toArray()).map((row) => row.voice)).toEqual(['main']);
   });
 
   it('never touches spend, whoever the rows belong to', async () => {
