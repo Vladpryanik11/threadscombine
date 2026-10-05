@@ -38,8 +38,8 @@ export class TcDatabase extends Dexie {
 
   constructor() {
     super(DB_NAME);
-    // Each later part adds its tables with a new `this.version(n).stores({...})`
-    // and never edits this one.
+    // Each later part adds its tables with a new `this.version(n).stores({...})`, raises DB_VERSION to `n`
+    // (tests/storage/db.test.ts fails otherwise) and never edits this one.
     this.version(1).stores({
       journal: '++id, ts, level, area',
       accounts: 'id, createdAt',
