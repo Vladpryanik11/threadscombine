@@ -50,7 +50,12 @@ export function createActiveTabTracker(): ActiveTabTracker {
     try {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       if (mine === generation) activeTabId = tab?.id;
-      if (tab?.id !== undefined && isThreadsUrl(tab.url)) next = await readPage(tab.id);
+      if (tab?.id !== undefined && isThreadsUrl(tab.url)) {
+        next = await readPage(tab.id);
+        // A page that is still loading has no content script yet (it comes at document_idle): that is not
+        // a reason to ask for a reload. The script's first broadcast, or the `complete` update, settles it.
+        if (next.status === 'needs_reload' && tab.status === 'loading') next = { status: 'loading' };
+      }
     } catch (error) {
       await log('warn', 'messaging', errorText(error));
     }

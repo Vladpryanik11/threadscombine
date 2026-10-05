@@ -47,6 +47,10 @@ async function openTab(url: string | undefined, options: { active?: boolean; con
   return tab;
 }
 
+/** The fake `tabs.update` stores whatever it is given, `status` included, though the typings do not list it. */
+const updateTab = (tabId: number, props: Partial<Browser.tabs.Tab>) =>
+  fakeBrowser.tabs.update(tabId, props as Browser.tabs.UpdateProperties);
+
 const fromTab = (id: number) => ({ tab: { id } as Browser.tabs.Tab });
 
 const pageChanged = (payload: unknown, tabId?: number) =>
@@ -133,6 +137,64 @@ describe('state of the active tab', () => {
     await tracker.refresh();
     expect(tracker.state.value).toEqual({ status: 'not_threads' });
     expect((await listJournal())[0]).toMatchObject({ level: 'warn', area: 'messaging', message: 'no window' });
+  });
+});
+
+describe('a tab that is still loading', () => {
+  it('is loading, not needs_reload, while the content script is not there yet; the script reporting in makes it ready', async () => {
+    stubContentScripts();
+    const tab = await openTab(FEED, { contentScript: false });
+    await updateTab(tab.id!, { status: 'loading' });
+    const tracker = track();
+    await tracker.refresh();
+    expect(tracker.state.value).toEqual({ status: 'loading' });
+    expect(await listJournal()).toEqual([]);
+
+    await pageChanged(parsePageUrl(FEED), tab.id);
+    expect(tracker.state.value).toMatchObject({ status: 'ready', tabId: tab.id, page: { kind: 'feed' } });
+  });
+
+  it('goes loading → ready over a whole page load, and never shows needs_reload on the way', async () => {
+    stubContentScripts();
+    const tab = await openTab(FEED);
+    const tracker = track();
+    await tracker.refresh();
+    expect(tracker.state.value.status).toBe('ready');
+    const seen: string[] = [];
+    const stopWatching = tracker.state.subscribe((value) => seen.push(value.status));
+
+    // a full load of another page starts: the content script of the new document does not exist yet
+    contentScripts.delete(tab.id!);
+    await updateTab(tab.id!, { status: 'loading', url: PROFILE });
+    await vi.waitFor(() => expect(tracker.state.value).toEqual({ status: 'loading' }));
+    await pause();
+    expect(tracker.state.value).toEqual({ status: 'loading' });
+
+    // the script is injected at document_idle, and the load completes
+    contentScripts.set(tab.id!, PROFILE);
+    await updateTab(tab.id!, { status: 'complete' });
+    await vi.waitFor(() => expect(tracker.state.value).toMatchObject({ status: 'ready', tabId: tab.id }));
+    stopWatching();
+    expect(seen).toContain('loading');
+    expect(seen).not.toContain('needs_reload');
+  });
+
+  it('stays needs_reload for a tab that has finished loading without a content script', async () => {
+    stubContentScripts();
+    const tab = await openTab(FEED, { contentScript: false });
+    await updateTab(tab.id!, { status: 'complete' });
+    const tracker = track();
+    await tracker.refresh();
+    expect(tracker.state.value).toEqual({ status: 'needs_reload', tabId: tab.id });
+  });
+
+  it('is ready at once when the content script already answers, loading or not', async () => {
+    stubContentScripts();
+    const tab = await openTab(FEED);
+    await updateTab(tab.id!, { status: 'loading' });
+    const tracker = track();
+    await tracker.refresh();
+    expect(tracker.state.value).toMatchObject({ status: 'ready', tabId: tab.id });
   });
 });
 
