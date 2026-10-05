@@ -99,7 +99,13 @@ async function loadAccountId(deps: AiDeps): Promise<string> {
 
 /** The checks that refuse a request before anything is sent, then everything the request needs. */
 async function prepare(req: AiRequest, deps: AiDeps, now: () => number): Promise<Prepared> {
-  const settings = await (deps.getSettings ?? getSettings)();
+  let settings: Settings;
+  try {
+    settings = await (deps.getSettings ?? getSettings)();
+  } catch (error) {
+    await log('error', 'ai', `${req.purpose}: не удалось прочитать настройки`, { error });
+    return { ok: false, error: aiError('unknown', { detail: 'Не удалось прочитать настройки' }) };
+  }
   if (settings.openRouterKey === '') return { ok: false, error: aiError('no_key') };
   if (settings.model === '') return { ok: false, error: aiError('no_model') };
   if (req.purpose !== KEY_CHECK_PURPOSE) {
@@ -291,12 +297,28 @@ async function askForJson<T>(
   return { ok: false, error: aiError('bad_output', { model: attempt.model }), gotFirstToken: false };
 }
 
+/** The JSON Schema of `schema` as it is sent to a model: without the root `$schema` key, which strict mode refuses. */
+function toModelSchema(schema: z.ZodType): object {
+  const jsonSchema = { ...z.toJSONSchema(schema) };
+  delete jsonSchema.$schema;
+  return jsonSchema;
+}
+
+/**
+ * Asks for an answer that passes `schema`, trying the models of the chain in turn, with one repair request per model.
+ *
+ * The schema is also sent to the model (`response_format` in strict mode for models that support it, in the prompt
+ * for the others), so it has to be a strict one:
+ * - every field is required; where a value may be missing, use `.nullable()`, not `.optional()`;
+ * - no `.default()`, and no records or loose objects (`z.record`, `z.looseObject`);
+ * - `schemaName` matches `[A-Za-z0-9_-]{1,64}`.
+ */
 export async function generateJson<T>(
   req: AiRequest,
   schema: z.ZodType<T>,
   schemaName: string,
   deps: AiDeps = {},
 ): Promise<AiResult<T>> {
-  const jsonSchema = z.toJSONSchema(schema);
+  const jsonSchema = toModelSchema(schema);
   return runChain(req, deps, (attempt) => askForJson(attempt, schema, schemaName, jsonSchema));
 }

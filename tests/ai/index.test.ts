@@ -154,6 +154,13 @@ it('re-exports listModels and AiFailure', () => {
 
 const schema = z.object({ title: z.string(), score: z.number() });
 const VALID = JSON.stringify({ title: 'T', score: 3 });
+/** What the facade sends for `schema`: the JSON Schema without the root `$schema` key. */
+const SENT_SCHEMA = {
+  type: 'object',
+  properties: { title: { type: 'string' }, score: { type: 'number' } },
+  required: ['title', 'score'],
+  additionalProperties: false,
+};
 
 describe('refusals before any request', () => {
   it('refuses without key or model, without asking the catalog or sending anything', async () => {
@@ -229,6 +236,29 @@ describe('refusals before any request', () => {
     // tomorrow the day's limit starts from zero again
     const tomorrow = makeDeps(fetchFn, { settings: { dailyBudgetUsd: 5 }, now: () => NOW + DAY });
     expect(await streamText(req(), vi.fn(), tomorrow)).toMatchObject({ ok: true });
+  });
+
+  it('answers with an error, and does not reject, when the settings cannot be read', async () => {
+    const { fetchFn } = scripted({});
+    const listModelsFn = vi.fn(async () => [modelInfo('m/main')]);
+    const deps = makeDeps(fetchFn, {
+      getSettings: () => Promise.reject(new Error('storage down')),
+      listModels: listModelsFn,
+    });
+    const refused = {
+      ok: false,
+      error: { code: 'unknown', message: 'Ошибка OpenRouter: Не удалось прочитать настройки' },
+    };
+
+    expect(await streamText(req(), vi.fn(), deps)).toEqual(refused);
+    expect(await generateJson(req(), schema, 'S', deps)).toEqual(refused);
+
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(listModelsFn).not.toHaveBeenCalled();
+    const entries = (await listJournal()).filter((entry) => entry.area === 'ai' && entry.level === 'error');
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.map((entry) => entry.message).join(' | ')).toContain('Не удалось прочитать настройки');
+    expect(entries.some((entry) => JSON.stringify(entry.details ?? null).includes('storage down'))).toBe(true);
   });
 
   it('fails open when the budget check cannot read the database', async () => {
@@ -624,9 +654,22 @@ describe('generateJson', () => {
     expect(result).toMatchObject({ ok: true, value: { title: 'T', score: 3 }, model: 'm/main', switchedFrom: [] });
     expect(calls[0]).toMatchObject({
       stream: false,
-      response_format: { type: 'json_schema', json_schema: { name: 'Verdict', strict: true, schema: z.toJSONSchema(schema) } },
+      response_format: { type: 'json_schema', json_schema: { name: 'Verdict', strict: true, schema: SENT_SCHEMA } },
     });
     expect(calls[0]?.messages).toEqual([{ role: 'user', content: SECRET_QUESTION }]);
+  });
+
+  it('leaves the root $schema key out of the schema in both modes', async () => {
+    const withFormat = scripted({ 'm/main': [complete(VALID)] });
+    await generateJson(req(), schema, 'Verdict', makeDeps(withFormat.fetchFn, { catalog: structured }));
+    const sent = withFormat.calls[0] as unknown as { response_format: { json_schema: { schema: object } } };
+    expect(sent.response_format.json_schema.schema).not.toHaveProperty('$schema');
+    expect(JSON.stringify(withFormat.calls[0])).not.toContain('$schema');
+
+    const inPrompt = scripted({ 'm/main': [complete('x'), complete(VALID)] });
+    await generateJson(req(), schema, 'Verdict', makeDeps(inPrompt.fetchFn));
+    expect(JSON.stringify(inPrompt.calls[0])).not.toContain('$schema'); // the first request
+    expect(JSON.stringify(inPrompt.calls[1])).not.toContain('$schema'); // and the repair request
   });
 
   it('embeds the schema in a new first system message otherwise', async () => {
@@ -637,7 +680,7 @@ describe('generateJson', () => {
     expect(calls[0]?.messages).toEqual([
       {
         role: 'system',
-        content: `Ответь только JSON по этой схеме, без пояснений:\n${JSON.stringify(z.toJSONSchema(schema))}`,
+        content: `Ответь только JSON по этой схеме, без пояснений:\n${JSON.stringify(SENT_SCHEMA)}`,
       },
       { role: 'user', content: SECRET_QUESTION },
     ]);
@@ -655,7 +698,7 @@ describe('generateJson', () => {
     expect(calls[0]?.messages).toHaveLength(2);
     expect(calls[0]?.messages[0]).toEqual({
       role: 'system',
-      content: `Ты редактор.\n\nОтветь только JSON по этой схеме, без пояснений:\n${JSON.stringify(z.toJSONSchema(schema))}`,
+      content: `Ты редактор.\n\nОтветь только JSON по этой схеме, без пояснений:\n${JSON.stringify(SENT_SCHEMA)}`,
     });
     expect(messages[0]?.content).toBe('Ты редактор.');
   });
