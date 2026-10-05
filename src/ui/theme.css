@@ -71,7 +71,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
   color: inherit;
 }
@@ -290,6 +291,69 @@ button:disabled {
 .tc-section__title {
   margin: 0 0 8px;
   font-size: 15px;
+}
+
+/* settings */
+
+.tc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-gap);
+}
+
+.tc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tc-gap);
+}
+
+.tc-hint,
+.tc-error {
+  margin: 0;
+  font-size: 12px;
+}
+
+.tc-hint {
+  color: var(--tc-color-text-muted);
+}
+
+.tc-error {
+  color: var(--tc-color-danger);
+}
+
+.tc-link {
+  color: var(--tc-color-accent);
+  font-size: 12px;
+}
+
+.tc-check {
+  padding: 8px 12px;
+  border: 1px solid var(--tc-color-border);
+  border-radius: var(--tc-radius);
+  background: var(--tc-color-surface);
+}
+
+.tc-check__answer {
+  margin: 0 0 6px;
+  color: var(--tc-color-success);
+  font-weight: 600;
+}
+
+.tc-check__details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.tc-check__details dt {
+  color: var(--tc-color-text-muted);
+}
+
+.tc-check__details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 /* toasts */

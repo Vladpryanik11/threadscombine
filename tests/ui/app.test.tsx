@@ -41,7 +41,10 @@ vi.mock('../../src/ui/account-signal', async () => {
   return { accounts: signal([]), activeAccount: signal(null) };
 });
 
-vi.mock('../../src/ai', () => ({ listModels: vi.fn() }));
+vi.mock('../../src/ai', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/ai')>()),
+  listModels: vi.fn(),
+}));
 
 const ACCOUNT: Account = { id: 'a1', name: 'Основной', threadsUsername: '', color: '#3b82f6', createdAt: 1 };
 
@@ -76,7 +79,7 @@ beforeEach(async () => {
   settings.value = { ...DEFAULT_SETTINGS };
   accounts.value = [];
   activeAccount.value = ACCOUNT;
-  vi.mocked(listModels).mockReset();
+  vi.mocked(listModels).mockReset().mockResolvedValue([]); // an empty catalog unless a test says otherwise
   await db.delete();
   await db.open();
 });
@@ -106,6 +109,20 @@ describe('tabs', () => {
     fireEvent.click(tab('Настройки'));
     expect(container.querySelector('[data-screen="settings"]')).not.toBeNull();
     expect(screen.queryByText(/^Скоро: /)).toBeNull();
+  });
+
+  it('«Настройки» lists the key, models and theme sections', () => {
+    render(<App />);
+    fireEvent.click(tab('Настройки'));
+    expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual(['Ключ OpenRouter', 'Модели', 'Оформление']);
+  });
+
+  it('«Настройки» says so when the settings could not be read', () => {
+    settings.value = null;
+    render(<App />);
+    fireEvent.click(tab('Настройки'));
+    expect(screen.getByRole('alert').textContent).toContain('Не удалось прочитать настройки');
+    expect(screen.queryByRole('heading')).toBeNull();
   });
 
   it('remembers the selected tab', () => {
@@ -143,9 +160,9 @@ describe('model chip', () => {
   it('says «Модель не выбрана» and opens settings', () => {
     render(<App />);
     expect(selectedTab()?.textContent).toBe('Аналитика');
+    expect(listModels).not.toHaveBeenCalled(); // the chip has no model to look up (the settings screen reads the catalog itself)
     fireEvent.click(screen.getByRole('button', { name: 'Модель не выбрана' }));
     expect(selectedTab()?.textContent).toBe('Настройки');
-    expect(listModels).not.toHaveBeenCalled();
   });
 
   it('shows the model id at once and its catalog name once the catalog resolves', async () => {
