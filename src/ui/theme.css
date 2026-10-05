@@ -356,6 +356,53 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+/* settings: accounts and spend */
+
+.tc-account-row {
+  padding-bottom: var(--tc-gap);
+  border-bottom: 1px solid var(--tc-color-border);
+}
+
+.tc-account-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.tc-account-row__fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--tc-gap);
+}
+
+.tc-account-row__fields > .tc-dot {
+  margin-top: 9px;
+}
+
+.tc-account-row__field {
+  flex: 1 1 130px;
+  min-width: 0;
+}
+
+.tc-spend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tc-spend-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--tc-gap);
+}
+
+.tc-spend-list li > :first-child {
+  overflow-wrap: anywhere;
+}
+
 /* toasts */
 
 .tc-toasts {

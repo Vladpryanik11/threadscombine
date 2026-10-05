@@ -1,9 +1,11 @@
 import { settings } from '../../ui/settings-signal';
+import { AccountsSection } from './AccountsSection';
 import { KeySection } from './KeySection';
 import { ModelsSection } from './ModelsSection';
+import { SpendSection } from './SpendSection';
 import { ThemeSection } from './ThemeSection';
 
-/** The «Настройки» tab; tasks 14–15 add the remaining sections below these. */
+/** The «Настройки» tab; task 15 adds the remaining sections below these. */
 export function SettingsScreen() {
   if (settings.value === null) {
     return (
@@ -19,6 +21,8 @@ export function SettingsScreen() {
       <KeySection />
       <ModelsSection />
       <ThemeSection />
+      <AccountsSection />
+      <SpendSection />
     </div>
   );
 }

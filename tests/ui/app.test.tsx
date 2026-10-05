@@ -111,10 +111,16 @@ describe('tabs', () => {
     expect(screen.queryByText(/^Скоро: /)).toBeNull();
   });
 
-  it('«Настройки» lists the key, models and theme sections', () => {
+  it('«Настройки» lists the key, models, theme, accounts and spend sections', () => {
     render(<App />);
     fireEvent.click(tab('Настройки'));
-    expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual(['Ключ OpenRouter', 'Модели', 'Оформление']);
+    expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual([
+      'Ключ OpenRouter',
+      'Модели',
+      'Оформление',
+      'Аккаунты',
+      'Расходы',
+    ]);
   });
 
   it('«Настройки» says so when the settings could not be read', () => {
