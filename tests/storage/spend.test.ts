@@ -7,6 +7,7 @@ import {
   monthStart,
   recordSpend,
   spendSummary,
+  watchSpend,
 } from '../../src/storage/spend';
 import type { ModelInfo } from '../../src/ai/types';
 
@@ -212,5 +213,40 @@ describe('recordSpend', () => {
     const [entry] = await listJournal(1);
     expect(entry).toMatchObject({ level: 'error', area: 'spend' });
     expect(JSON.stringify(entry)).toContain('disk is full');
+  });
+});
+
+describe('watchSpend', () => {
+  const pause = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+  it('reports the state at subscribing, then each recorded spend, and stops when told to', async () => {
+    await recordSpend(rec()); // there before anyone watched
+    const changed = vi.fn();
+    const stop = watchSpend(changed);
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+    await pause();
+    expect(changed).toHaveBeenCalledTimes(1); // nothing else happened
+
+    await recordSpend(rec());
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(2));
+    await recordSpend(rec());
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(3));
+
+    stop();
+    await recordSpend(rec());
+    await pause();
+    expect(changed).toHaveBeenCalledTimes(3);
+  });
+
+  it('journals a failing watch and gives the reader one last call', async () => {
+    vi.spyOn(db.spend, 'count').mockRejectedValue(new Error('disk gone'));
+    const changed = vi.fn();
+    const stop = watchSpend(changed);
+
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+    await vi.waitFor(async () =>
+      expect((await listJournal())[0]).toMatchObject({ level: 'error', area: 'spend', message: 'Не удалось следить за расходами' }),
+    );
+    stop();
   });
 });

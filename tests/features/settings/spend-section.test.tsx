@@ -5,7 +5,7 @@ import { purposeLabel } from '../../../src/features/settings/purpose-labels';
 import { db, type Account } from '../../../src/storage/db';
 import { listJournal } from '../../../src/storage/journal';
 import { getSettings, updateSettings } from '../../../src/storage/settings';
-import { spendSummary, type SpendSummary } from '../../../src/storage/spend';
+import { recordSpend, spendSummary, type SpendSummary } from '../../../src/storage/spend';
 import { accounts } from '../../../src/ui/account-signal';
 import { initSettingsSignal, settings } from '../../../src/ui/settings-signal';
 
@@ -160,6 +160,7 @@ describe('the summary', () => {
     const second = deferred<SpendSummary>();
     vi.mocked(spendSummary).mockReset().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
     render(<SpendSection />);
+    await waitFor(() => expect(spendSummary).toHaveBeenCalledTimes(1)); // the first read, still waiting for its answer
     fireEvent.click(screen.getByRole('button', { name: 'Обновить' }));
 
     second.resolve(summary({ monthUsd: 2 }));
@@ -201,6 +202,48 @@ describe('the summary', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Не удалось прочитать расходы');
     expect(screen.queryByText(/^Сегодня: /)).toBeNull();
     expect(screen.getByLabelText('Лимит в день, $')).toBeTruthy(); // the limits stay usable
+  });
+});
+
+describe('following the spend', () => {
+  const paid = (costUsd: number) =>
+    recordSpend({
+      ts: Date.now(),
+      accountId: MAIN.id,
+      purpose: 'key-check',
+      model: 'm/x',
+      promptTokens: 12,
+      completionTokens: 3,
+      costUsd,
+    });
+
+  it('shows what a paid call adds without pressing «Обновить»', async () => {
+    const actual = await vi.importActual<typeof import('../../../src/storage/spend')>('../../../src/storage/spend');
+    await setUp();
+    vi.mocked(spendSummary).mockImplementation(() => actual.spendSummary()); // the real summary over the real table
+    render(<SpendSection />);
+    await screen.findByText('Сегодня: $0.00 · За месяц: $0.00');
+
+    await paid(0.25);
+    await screen.findByText('Сегодня: $0.25 · За месяц: $0.25');
+    expect(entries('По задачам')).toEqual(['Проверка ключа$0.25']);
+    expect(entries('По аккаунтам')).toEqual(['Основной$0.25']);
+
+    await paid(0.5);
+    await screen.findByText('Сегодня: $0.75 · За месяц: $0.75');
+  });
+
+  it('stops following when the section is gone', async () => {
+    await setUp();
+    const { unmount } = render(<SpendSection />);
+    await waitFor(() => expect(spendSummary).toHaveBeenCalledTimes(1));
+
+    unmount();
+    await new Promise((resolve) => setTimeout(resolve, 20)); // Preact runs the clean-up a tick later
+    await paid(0.25);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(spendSummary).toHaveBeenCalledTimes(1);
   });
 });
 

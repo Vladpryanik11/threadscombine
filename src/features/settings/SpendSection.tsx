@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { log } from '../../storage/journal';
 import type { Settings } from '../../storage/settings';
-import { spendSummary, type SpendSummary } from '../../storage/spend';
+import { spendSummary, watchSpend, type SpendSummary } from '../../storage/spend';
 import { accounts } from '../../ui/account-signal';
 import { Button, Section, TextField } from '../../ui/components';
 import { settings } from '../../ui/settings-signal';
@@ -23,7 +23,10 @@ interface SpendState {
   reload: () => void;
 }
 
-/** The spend summary, read when the section opens and again on request; an answer that is out of date is dropped. */
+/**
+ * The spend summary, read when the section opens, whenever the spend changes (a paid AI call, e.g. the key check
+ * above) and on request; an answer that is out of date is dropped.
+ */
 function useSpendSummary(): SpendState {
   const [summary, setSummary] = useState<SpendSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,8 +51,9 @@ function useSpendSummary(): SpendState {
   };
 
   useEffect(() => {
-    reload();
+    const stopWatching = watchSpend(reload); // reads now, and again after every spend
     return () => {
+      stopWatching();
       latest.current += 1; // whatever is still on its way is no longer wanted
     };
   }, []);

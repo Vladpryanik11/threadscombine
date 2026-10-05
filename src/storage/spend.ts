@@ -1,3 +1,4 @@
+import { liveQuery } from 'dexie';
 import type { ModelInfo, Usage } from '../ai/types';
 import type { Settings } from './settings';
 import { db, type SpendRecord } from './db';
@@ -33,6 +34,23 @@ export async function recordSpend(r: Omit<SpendRecord, 'id'>): Promise<void> {
       error,
     });
   }
+}
+
+/**
+ * Calls `cb` once for the state of the spend table at the time of subscribing and again after every change to it
+ * (an AI call was paid for, in this panel or another), so that a reader that starts from `cb` misses nothing.
+ * Returns the function that stops following. If the watch itself fails, the failure is journaled and `cb` gets one
+ * last call: the reader then tries on its own and says what it finds.
+ */
+export function watchSpend(cb: () => void): () => void {
+  const subscription = liveQuery(async () => db.spend.count()).subscribe({
+    next: () => cb(),
+    error: (error: unknown) => {
+      void log('error', 'spend', 'Не удалось следить за расходами', { error });
+      cb();
+    },
+  });
+  return () => subscription.unsubscribe();
 }
 
 /** Start of the local calendar day containing `now`. */
