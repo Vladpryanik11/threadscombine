@@ -1,3 +1,4 @@
+import { SWITCHABLE } from '../../src/ai/errors';
 import { buildBody, callComplete, callStream } from '../../src/ai/request';
 import type { CallOptions } from '../../src/ai/request';
 import type { AiRequest } from '../../src/ai/types';
@@ -33,6 +34,21 @@ function stalledResponse(chunks: string[], signal: AbortSignal | null | undefine
     },
   });
   return new Response(body, { status: 200 });
+}
+
+/** A response whose body is fed by hand, and which errors when the signal aborts, as a real one does. */
+function liveResponse(signal: AbortSignal | null | undefined) {
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c;
+      signal?.addEventListener('abort', () => c.error(signal.reason), { once: true });
+    },
+  });
+  return {
+    response: new Response(body, { status: 200 }),
+    push: (text: string) => controller.enqueue(encoder.encode(text)),
+  };
 }
 
 const delta = (content: string) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
@@ -177,15 +193,28 @@ describe('callStream', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'model_unavailable', status: 502 }, gotFirstToken: false });
   });
 
-  it('maps an error chunk whose code is not a number to unknown', async () => {
+  it('maps an error chunk whose code is not a number to model_unavailable while nothing has been streamed', async () => {
     const { fetchFn } = recordingFetch(() =>
       sseResponse(['data: {"error":{"code":"server_error","message":"boom"}}\n\n']),
     );
     const result = await callStream(req, options(fetchFn), () => {});
     expect(result).toMatchObject({
       ok: false,
-      error: { code: 'unknown', message: 'Ошибка OpenRouter: boom' },
+      error: { code: 'model_unavailable', message: 'Модель vendor/model сейчас недоступна', model: 'vendor/model' },
       gotFirstToken: false,
+    });
+    expect(SWITCHABLE.has('model_unavailable')).toBe(true);
+  });
+
+  it('keeps an error chunk whose code is not a number as unknown once text has been streamed', async () => {
+    const { fetchFn } = recordingFetch(() =>
+      sseResponse([delta('Ра'), 'data: {"error":{"code":"server_error","message":"boom"}}\n\n']),
+    );
+    const result = await callStream(req, options(fetchFn), () => {});
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'unknown', message: 'Ошибка OpenRouter: boom' },
+      gotFirstToken: true,
     });
   });
 
@@ -347,6 +376,87 @@ describe('callStream', () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
+    describe('is a timeout of silence', () => {
+      it('lets a stream run longer than the timeout as long as data keeps coming', async () => {
+        vi.useFakeTimers();
+        let live!: ReturnType<typeof liveResponse>;
+        const { fetchFn } = recordingFetch(({ init }) => (live = liveResponse(init.signal)).response);
+        const deltas: string[] = [];
+        const pending = callStream(req, options(fetchFn), (chunk) => deltas.push(chunk));
+
+        for (const piece of ['a', 'b', 'c']) {
+          await vi.advanceTimersByTimeAsync(14_000); // N - 1 s of nothing, then a data line
+          live.push(delta(piece));
+          await vi.advanceTimersByTimeAsync(0);
+        }
+        expect(deltas).toEqual(['a', 'b', 'c']); // 42 s in, with a 15 s timeout
+        live.push('data: [DONE]\n\n');
+        expect(await pending).toEqual({ ok: true, value: 'abc' });
+        expect(vi.getTimerCount()).toBe(0);
+      });
+
+      it('times out N s after the last data line and reports that text had begun', async () => {
+        vi.useFakeTimers();
+        let live!: ReturnType<typeof liveResponse>;
+        const { fetchFn } = recordingFetch(({ init }) => (live = liveResponse(init.signal)).response);
+        const pending = callStream(req, options(fetchFn), () => {});
+
+        await vi.advanceTimersByTimeAsync(10_000);
+        live.push(delta('Ра'));
+        await vi.advanceTimersByTimeAsync(14_999);
+        expect(vi.getTimerCount()).toBe(1); // 25 s since the start, but not yet 15 s of silence
+        await vi.advanceTimersByTimeAsync(1);
+        expect(await pending).toMatchObject({
+          ok: false,
+          error: { code: 'timeout', message: 'Модель не ответила за 15 с', model: 'vendor/model' },
+          gotFirstToken: true,
+        });
+        expect(vi.getTimerCount()).toBe(0);
+      });
+
+      it('is still N s from the start before the first data line', async () => {
+        vi.useFakeTimers();
+        const { fetchFn } = recordingFetch(({ init }) => stalledResponse([], init.signal));
+        const pending = callStream(req, options(fetchFn), () => {});
+        await vi.advanceTimersByTimeAsync(14_999);
+        expect(vi.getTimerCount()).toBe(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(await pending).toMatchObject({ ok: false, error: { code: 'timeout' }, gotFirstToken: false });
+      });
+
+      it('is not restarted by a comment line', async () => {
+        vi.useFakeTimers();
+        let live!: ReturnType<typeof liveResponse>;
+        const { fetchFn } = recordingFetch(({ init }) => (live = liveResponse(init.signal)).response);
+        const pending = callStream(req, options(fetchFn), () => {});
+
+        await vi.advanceTimersByTimeAsync(10_000);
+        live.push(': OPENROUTER PROCESSING\n\n');
+        await vi.advanceTimersByTimeAsync(4_999);
+        expect(vi.getTimerCount()).toBe(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(await pending).toMatchObject({
+          ok: false,
+          error: { code: 'timeout', message: 'Модель не ответила за 15 с' },
+          gotFirstToken: false,
+        });
+      });
+
+      it('is restarted by a data line that carries no text', async () => {
+        vi.useFakeTimers();
+        let live!: ReturnType<typeof liveResponse>;
+        const { fetchFn } = recordingFetch(({ init }) => (live = liveResponse(init.signal)).response);
+        const pending = callStream(req, options(fetchFn), () => {});
+
+        await vi.advanceTimersByTimeAsync(14_000);
+        live.push(delta('')); // e.g. a reasoning-only chunk
+        await vi.advanceTimersByTimeAsync(14_000);
+        live.push(delta('x'));
+        live.push('data: [DONE]\n\n');
+        expect(await pending).toEqual({ ok: true, value: 'x' });
+      });
+    });
+
     it('clears the timer after a normal response', async () => {
       vi.useFakeTimers();
       const { fetchFn } = recordingFetch(() => sseResponse([delta('x')]));
@@ -425,6 +535,27 @@ describe('callComplete', () => {
       error: { code: 'no_credits', status: 402 },
       gotFirstToken: false,
     });
+  });
+
+  it('maps an error object with a code that is not a number inside a 200 response to model_unavailable', async () => {
+    const { fetchFn } = recordingFetch(() => json({ error: { code: 'server_error', message: 'boom' } }));
+    expect(await callComplete(req, options(fetchFn))).toMatchObject({
+      ok: false,
+      error: { code: 'model_unavailable', model: 'vendor/model' },
+      gotFirstToken: false,
+    });
+  });
+
+  it('keeps the deadline of the whole call, however the body trickles in', async () => {
+    vi.useFakeTimers();
+    let live!: ReturnType<typeof liveResponse>;
+    const { fetchFn } = recordingFetch(({ init }) => (live = liveResponse(init.signal)).response);
+    const pending = callComplete(req, options(fetchFn));
+    await vi.advanceTimersByTimeAsync(14_000);
+    live.push(' '); // the body shows signs of life; the deadline does not move
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await pending).toMatchObject({ ok: false, error: { code: 'timeout', message: 'Модель не ответила за 15 с' } });
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('empty content is model_unavailable', async () => {

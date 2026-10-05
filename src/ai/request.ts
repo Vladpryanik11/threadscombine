@@ -68,13 +68,19 @@ function parseUsage(value: unknown): Usage | undefined {
   return usage;
 }
 
-/** An OpenRouter `{ error: { code, message } }` object (mid-stream chunk or a 200 body). */
-function parseErrorObject(chunk: Record<string, unknown>, model: string): AiError | undefined {
+/**
+ * An OpenRouter `{ error: { code, message } }` object (mid-stream chunk or a 200 body). A numeric `code` is an HTTP
+ * status. Anything else (`"server_error"`) is an upstream failure of the model: before any text has been delivered
+ * it is `model_unavailable`, which a fallback model can cure; after text it stays `unknown`, because switching
+ * would throw away what the user has already seen.
+ */
+function parseErrorObject(chunk: Record<string, unknown>, model: string, gotFirstToken: boolean): AiError | undefined {
   const { error } = chunk;
   if (!isRecord(error)) return undefined;
   const message = typeof error.message === 'string' ? error.message : '';
   const { code } = error;
   if (typeof code === 'number') return classifyHttpError(code, message, model);
+  if (!gotFirstToken) return aiError('model_unavailable', { model });
   return aiError('unknown', { model, detail: message });
 }
 
@@ -96,7 +102,11 @@ interface Attempt {
   gotFirstToken: boolean;
 }
 
-type Consume = (response: Response, attempt: Attempt) => Promise<CallResult<string>>;
+/**
+ * Reads the response. `restartTimer` starts the timeout over; a call that never invokes it has one deadline from the
+ * start (`callComplete`), one that does it on every sign of life has an inactivity timeout (`callStream`).
+ */
+type Consume = (response: Response, attempt: Attempt, restartTimer: () => void) => Promise<CallResult<string>>;
 
 /**
  * One POST to `/chat/completions`. The timeout and `opts.signal` / `req.signal` share a single
@@ -128,7 +138,13 @@ async function send(
     );
 
   if (signal.aborted) return abortFailure();
-  const timer = setTimeout(() => timeout.abort(TIMEOUT_REASON), timeoutSec * 1000);
+  const startTimer = (): ReturnType<typeof setTimeout> =>
+    setTimeout(() => timeout.abort(TIMEOUT_REASON), timeoutSec * 1000);
+  let timer = startTimer();
+  const restartTimer = (): void => {
+    clearTimeout(timer);
+    timer = startTimer();
+  };
   try {
     const response = await fetchFn(`${OPENROUTER_BASE}/chat/completions`, {
       method: 'POST',
@@ -144,7 +160,7 @@ async function send(
       const text = await response.text().catch(() => '');
       return signal.aborted ? abortFailure() : fail(classifyHttpError(response.status, text, model));
     }
-    return await consume(response, attempt);
+    return await consume(response, attempt, restartTimer);
   } catch {
     return signal.aborted ? abortFailure() : fail(aiError('network', { model }));
   } finally {
@@ -163,7 +179,12 @@ function finish(text: string, usage: Usage | undefined, model: string, attempt: 
   return usage ? { ok: true, value: text, usage } : { ok: true, value: text };
 }
 
-/** Streams the answer: every non-empty `delta.content` goes to `onDelta` as it arrives. */
+/**
+ * Streams the answer: every non-empty `delta.content` goes to `onDelta` as it arrives. The request timeout is a
+ * timeout of silence here: it starts over with every SSE data line (not with `:` comments), so a long answer that
+ * keeps coming is never cut off, while a model that has said nothing for that long is. Before the first data line
+ * it counts from the start of the request.
+ */
 export async function callStream(
   req: AiRequest,
   opts: CallOptions,
@@ -176,15 +197,16 @@ export async function callStream(
     reasoning: opts.settings.reasoning,
     supportsReasoning: opts.supportsReasoning,
   });
-  return send(req, opts, body, async (response, attempt) => {
+  return send(req, opts, body, async (response, attempt, restartTimer) => {
     if (!response.body) return finish('', undefined, model, attempt);
     let text = '';
     let usage: Usage | undefined;
     // leaving the loop early (an error chunk) makes readSse cancel the body
     for await (const data of readSse(response.body)) {
+      restartTimer();
       const chunk = parseJson(data);
       if (!isRecord(chunk)) continue;
-      const error = parseErrorObject(chunk, model);
+      const error = parseErrorObject(chunk, model, attempt.gotFirstToken);
       if (error) return failure(error, attempt, usage);
       const delta = contentOf(chunk, 'delta');
       if (delta !== '') {
@@ -214,7 +236,7 @@ export async function callComplete(
   return send(req, opts, body, async (response, attempt) => {
     const payload: unknown = await response.json();
     if (!isRecord(payload)) return finish('', undefined, model, attempt);
-    const error = parseErrorObject(payload, model);
+    const error = parseErrorObject(payload, model, false);
     if (error) return { ok: false, error, gotFirstToken: false };
     return finish(contentOf(payload, 'message'), parseUsage(payload.usage), model, attempt);
   });
